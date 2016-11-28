@@ -96,7 +96,7 @@ case class RTree(root: RTreeNode) extends Index with Serializable {
     import loop.{break, breakable}
     breakable {
       while (q.nonEmpty) {
-        val now = q.front
+        val now = q.dequeue
         val cur_node = now._1
         val cur_level = now._2
         if (cur_node.isLeaf) {
@@ -111,13 +111,17 @@ case class RTree(root: RTreeNode) extends Index with Serializable {
           }
         } else if (cur_level == level_limit) {
           estimate += cur_node.m_mbr.calcRatio(query) * cur_node.size
+          cur_node.m_child.foreach {
+            case RTreeInternalEntry(mbr, node) =>
+              if (query.intersects(mbr)) q.enqueue((node, cur_level + 1))
+          }
         } else break
       }
     }
     if (ans.nonEmpty) return Some(ans.toArray)
     else if (estimate / root.size > s_threshold) return None
     while (q.nonEmpty) {
-      val now = q.front
+      val now = q.dequeue
       val cur_node = now._1
       val cur_level = now._2
       if (cur_node.isLeaf) {
@@ -150,6 +154,27 @@ case class RTree(root: RTreeNode) extends Index with Serializable {
         now.m_child.foreach {
           case RTreeLeafEntry(shape, m_data, _) =>
             if (origin.minDist(shape) <= r) ans += ((shape, m_data))
+        }
+      }
+    }
+    ans.toArray
+  }
+
+  def circleRangeCnt(origin: Shape, r: Double): Array[(Shape, Int, Int)] = {
+    val ans = mutable.ArrayBuffer[(Shape, Int, Int)]()
+    val st = new mutable.Stack[RTreeNode]()
+    if (root.m_mbr.minDist(origin) <= r && root.m_child.nonEmpty) st.push(root)
+    while (st.nonEmpty) {
+      val now = st.pop()
+      if (!now.isLeaf) {
+        now.m_child.foreach{
+          case RTreeInternalEntry(mbr, node) =>
+            if (origin.minDist(mbr) <= r) st.push(node)
+        }
+      } else {
+        now.m_child.foreach {
+          case RTreeLeafEntry(shape, m_data, size) =>
+            if (origin.minDist(shape) <= r) ans += ((shape, m_data, size))
         }
       }
     }
